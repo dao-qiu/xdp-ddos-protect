@@ -2,9 +2,9 @@
 
 The [xdp_ddos_protection.c](./xdp_ddos_protection.c) file contains an eBPF program designed for DDoS protection using XDP (eXpress Data Path).
 
-This README.md also contain simple instructions to simulate a SYN flood attack on lo interface, by running a local server used as a target, which listens on a given TCP port and a client which send many SYN packets to the target.
+This README.md also contains simple instructions to simulate a `SYN flood attack` on the lo interface by running a local server used as a target, which listens on a given TCP port, and a client which sends many SYN packets to the target.
 
-![Demo](demo.gif)
+![Demo](./static/demo.gif)
 
 ## Program logic
 
@@ -17,6 +17,12 @@ If none of the above conditions are met, the function then extracts the source I
 The current time is fetched in nanoseconds using `bpf_ktime_get_ns()`. If an entry for the source IP exists, the code checks if the current time is within the same time window defined by `TIME_WINDOW_NS`. If it is, the packet count for this IP is incremented. If the packet count exceeds a predefined `THRESHOLD`, the packet is dropped by returning `XDP_DROP`. If the time window has elapsed, the packet count is reset, and the time of the last update is set to the current time.
 
 If no entry exists for the source IP, a new rate limit entry is initialized with the current time and a packet count of one. This new entry is then added to the rate_limit_map. If the packet count is within the threshold, the packet is allowed to pass by returning `XDP_PASS`. This mechanism helps in mitigating DDoS attacks by limiting the rate of packets from any single IP address.
+
+## Compatibility
+
+This program is compatible for both `amd64` and `arm64` architectures. The program was tested on Ubuntu/Debian Linux distributions with `kernel version >= 5.15`.
+
+![arm64](./static/arm64.png)
 
 ## Repository files
 
@@ -68,7 +74,7 @@ sudo apt install hping3
 
 Run an `nginx` server locally using `docker`:
 ```sh
-docker run -p 80:1234 nginx
+docker run -p 1234:80 nginx
 ```
 Then run the test:
 ```sh
@@ -96,7 +102,7 @@ export C_INCLUDE_PATH=/usr/include/x86_64-linux-gnu
 If you're encountering an issue with attaching an XDP program to the eth0 interface with a similar error to the following, this is due to Large Receive Offload (LRO) being enabled.
 
 ```sh
-$ sudo ip link set dev eth0 xdp obj bpf/xdp_ebpf.o sec xdp
+$ sudo ip link set dev eth0 xdp obj xdp_ddos_protection.o sec xdp
 Error: hv_netvsc: XDP: not support LRO.
 ```
 The error message indicates that the hv_netvsc driver does not support XDP when LRO is enabled. To resolve this issue, you need to disable LRO on the eth0 interface before attaching the XDP program. You can do this using the ethtool command:
@@ -104,6 +110,14 @@ The error message indicates that the hv_netvsc driver does not support XDP when 
 ```sh
 sudo ethtool -K eth0 lro off
 ```
+
+## Considerations
+
+The test presented above uses `lo` which is a virtual network interface - by default, XDP is designed to work on physical and virtual interfaces that send and receive packets from the network. The loopback interface behaves differently because it is a purely software interface used for local traffic within the system.
+
+Traffic on the loopback interface is not "real" network traffic, it is handled entirely within the kernel. As a result, certain packet processing steps (like those involving hardware offload) are bypassed, and this can affect how XDP interacts with the loopback interface.
+
+The performance benefits of XDP may be less pronounced for loopback traffic compared to physical interfaces. This means the performance is greater on regular network interfaces like `eth0`, which represent a physical hardware device. 
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
