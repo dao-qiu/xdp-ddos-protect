@@ -1,0 +1,36 @@
+name: Test XDP program compile/load/attach on Ubuntu
+
+on: [push, pull_request]
+
+jobs:
+  xdp_test:
+    runs-on: ubuntu-latest
+
+    env:
+      C_INCLUDE_PATH: /usr/include/x86_64-linux-gnu
+      IFACE: lo
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up BPF toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install clang llvm libbpf-dev make linux-headers-$(uname -r) -y
+        find /usr/include -name 'types.h'
+
+    - name: Test compile XDP program
+      run: make compile
+
+    - name: Test attach XDP program
+      run: make attach
+
+    - name: Check if XDP program is attached
+      run: make iface-inspect
+
+    - name: Dump BPF map
+      run: make dump
+
+    - name: Test detach XDP program
+      run: make detach
