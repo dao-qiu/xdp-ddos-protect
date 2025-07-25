@@ -5,11 +5,12 @@
 
 #define RATE_LIMIT_PKTPS 250 // Max packets per second
 #define TIME_WINDOW_NS 1000000000 // 1 second in nanoseconds
-#define RATE_LIMIT_BPS 10000000  // 10 Mbps
+#define RATE_LIMIT_BPS 10000000  // Number bits per second (10 Mbps)
 
 struct rate_limit_entry {
     __u64 last_update; // Timestamp of the last update
     __u32 packet_count; // Packet count within the time window
+    __u64 bit_count; //Number of bits of packet count within the time window
 };
 
 // Hash map to track rate limits for each source IP
@@ -44,18 +45,23 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
     
     // Get current time in nanoseconds
     __u64 current_time = bpf_ktime_get_ns();
+
+    // Packet size in bits of new packet
+    __u64 pkt_size_bits = (data_end - data) * 8;
     
     if (entry) {
         // Check if we're in the same time window
         if (current_time - entry->last_update < TIME_WINDOW_NS) {
             entry->packet_count++;
-            if (entry->packet_count > RATE_LIMIT_PKTPS) {
+            entry->bit_count = entry->bit_count + pkt_size_bits;
+            if (entry->bit_count > RATE_LIMIT_BPS) {
                 return XDP_DROP; // Drop packet if rate exceeds threshold
             }
         } else {
             // New time window, reset counter
             entry->last_update = current_time;
             entry->packet_count = 1;
+            entry->bit_count = pkt_size_bits;
         }
     } else {
         // Initialize rate limit entry for new IP
@@ -64,6 +70,7 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
         __builtin_memset(&new_entry, 0, sizeof(new_entry));
         new_entry.last_update = current_time;
         new_entry.packet_count = 1;
+        new_entry.bit_count = pkt_size_bits;
         bpf_map_update_elem(&rate_limit_map, &src_ip, &new_entry, BPF_ANY);
     }
     return XDP_PASS; // Allow packet if under threshold   
