@@ -3,8 +3,9 @@
 #include <linux/ip.h>
 #include <bpf/bpf_helpers.h>
 
-#define THRESHOLD 250 // Max packets per second
+#define RATE_LIMIT_PKTPS 250 // Max packets per second
 #define TIME_WINDOW_NS 1000000000 // 1 second in nanoseconds
+#define RATE_LIMIT_BPS 10000000  // 10 Mbps
 
 struct rate_limit_entry {
     __u64 last_update; // Timestamp of the last update
@@ -48,7 +49,7 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
         // Check if we're in the same time window
         if (current_time - entry->last_update < TIME_WINDOW_NS) {
             entry->packet_count++;
-            if (entry->packet_count > THRESHOLD) {
+            if (entry->packet_count > RATE_LIMIT_PKTPS) {
                 return XDP_DROP; // Drop packet if rate exceeds threshold
             }
         } else {
