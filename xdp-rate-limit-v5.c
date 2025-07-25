@@ -19,7 +19,7 @@ struct {
     __type(value, struct rate_limit_entry);
 } rate_limit_map SEC(".maps");
 
-SEC("xdp") int ddos_protection(struct xdp_md *ctx) {
+SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data; // Parse Ethernet header
     struct ethhdr *eth = data;
