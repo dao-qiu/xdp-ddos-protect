@@ -12,12 +12,24 @@ struct rate_limit_entry {
 };
 
 // Hash map to track rate limits for each source IP
+// This Hash map cannot be read on AM62L EVM for some reason
+/*
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1024);
     __type(key, __u32); // Source IP
     __type(value, struct rate_limit_entry);
 } rate_limit_map SEC(".maps");
+ */
+
+// Hash map to track rate limits for each source IP
+// The hash map works
+struct bpf_map_def SEC("maps") rate_limit_map = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(__u32), // IPv4 source address
+    .value_size = sizeof(struct rate_limit_entry),
+    .max_entries = 1024,
+};
 
 SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
