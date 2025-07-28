@@ -39,6 +39,14 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
         return XDP_PASS;
         
     __u32 src_ip = iph->saddr; // Source IP address
+
+    /*
+    // Compare two ways of parsing IP header
+    struct iphdr *ip_test = data + sizeof(struct ethhdr);
+    __u32 src_ip_test = ip_test->saddr;
+    bpf_printk("xdp-rate-limit-v5: src_ip: %u\n", src_ip);
+    bpf_printk("xdp-rate-limit-v5: src_ip_test: %u\n", src_ip_test);
+    */
     
     // Lookup rate limit entry for this IP
     struct rate_limit_entry *entry = bpf_map_lookup_elem(&rate_limit_map, &src_ip);
@@ -51,11 +59,11 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
     
     if (entry) {
         // Check if we're in the same time window
-        bpf_printk("xdp-rate-limit-v5: time window: %u\n", current_time - entry->last_update);
+        // bpf_printk("xdp-rate-limit-v5: time window: %u\n", current_time - entry->last_update);
         if (current_time - entry->last_update < TIME_WINDOW_NS) {
             entry->packet_count++;
             entry->bit_count = entry->bit_count + pkt_size_bits;
-            bpf_printk("xdp-rate-limit-v5: entry->bit_count: %u\n", entry->bit_count);
+            // bpf_printk("xdp-rate-limit-v5: entry->bit_count: %u\n", entry->bit_count);
             if (entry->bit_count > RATE_LIMIT_BPS) {
                 return XDP_DROP; // Drop packet if rate exceeds threshold
             }
