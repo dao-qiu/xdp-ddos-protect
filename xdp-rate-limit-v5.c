@@ -9,8 +9,8 @@
 
 struct rate_limit_entry {
     __u64 last_update; // Timestamp of the last update
-    __u32 packet_count; // Packet count within the time window
     __u64 bit_count; //Number of bits of packet count within the time window
+    __u32 packet_count; // Packet count within the time window
 };
 
 // Hash map to track rate limits for each source IP
