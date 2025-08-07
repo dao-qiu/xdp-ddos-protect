@@ -6,6 +6,9 @@
 #define RATE_LIMIT_PKTPS 250 // Max packets per second
 #define TIME_WINDOW_NS 1000000000 // 1 second in nanoseconds
 #define RATE_LIMIT_BPS 10000000  // Number bits per second (10 Mbps)
+#define TIME_ARRAY_SIZE 10 // Number of Time Array Entries
+#define BURST_TIME_WINDOW_NS 250000000 // 0.25 second in nanoseconds
+#define BURST_LIMIT_BITS 20000 // Number bits for burst limit
 
 struct rate_limit_entry {
     __u64 last_update; // Timestamp of the last update
@@ -20,6 +23,60 @@ struct bpf_map_def SEC("maps") rate_limit_map = {
     .value_size = sizeof(struct rate_limit_entry),
     .max_entries = 1024,
 };
+
+// Circular buffer to keep track of current times
+__u64 time_buffer[TIME_ARRAY_SIZE];
+int time_front = 0;
+int time_count = 0;
+
+// Circular buffer to keep track of packet sizes
+__u64 size_buffer[TIME_ARRAY_SIZE];
+int size_front = 0;
+int size_count = 0;
+
+// Function to add an element to the time buffer
+void add_time(__u64 value) {
+    time_buffer[(time_front + time_count) % TIME_ARRAY_SIZE] = value;
+    if (time_count < TIME_ARRAY_SIZE) {
+        time_count++;
+    } else {
+        time_front = (time_front + 1) % TIME_ARRAY_SIZE;
+    }
+}
+
+// Function to add an element to the size buffer
+void add_size(__u64 value) {
+    size_buffer[(size_front + size_count) % TIME_ARRAY_SIZE] = value;
+    if (size_count < TIME_ARRAY_SIZE) {
+        size_count++;
+    } else {
+        size_front = (size_front + 1) % TIME_ARRAY_SIZE;
+    }
+}
+
+// Function to slide the window
+int slide_window(__u64 new_time, __u64 new_size) {
+    add_time(new_time);
+    add_size(new_size);
+
+    // Check if the time difference between the oldest entry and the 10th entry is less than 0.25 seconds
+    if (time_count >= TIME_ARRAY_SIZE) {
+        __u64 time_diff = time_buffer[(time_front + TIME_ARRAY_SIZE - 1) % TIME_ARRAY_SIZE] - time_buffer[time_front];
+        if (time_diff < BURST_TIME_WINDOW_NS) {
+            // Check if the accumulated packet size associated with the compared entries is greater than 20000 bits
+            __u64 total_size = 0;
+            for (int i = 0; i < TIME_ARRAY_SIZE; i++) {
+                total_size += size_buffer[(size_front + i) % TIME_ARRAY_SIZE];
+            }
+            if (total_size > BURST_LIMIT_BITS) {
+                // Don't enforce XDP_DROP or increment the packet_count or bit_count
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
 
 SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
@@ -56,19 +113,27 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
 
     // Packet size in bits of new packet
     __u64 pkt_size_bits = (data_end - data) * 8;
+
+    //Flag to determine if burst conditions met
+    int burst_met = 0;
     
     if (entry) {
         // Check if we're in the same time window
         // bpf_printk("xdp-rate-limit-v5: time window: %u\n", current_time - entry->last_update);
         if (current_time - entry->last_update < TIME_WINDOW_NS) {
-            entry->packet_count++;
-            entry->bit_count = entry->bit_count + pkt_size_bits;
-            // bpf_printk("xdp-rate-limit-v5: entry->bit_count: %u\n", entry->bit_count);
-            if (entry->bit_count > RATE_LIMIT_BPS) {
-                entry->packet_count--;
-                entry->bit_count = entry->bit_count - pkt_size_bits;
-                return XDP_DROP; // Drop packet if rate exceeds threshold
+            burst_met = slide_window(current_time, pkt_size_bits);
+
+            if(burst_met == 0){
+                entry->packet_count++;
+                entry->bit_count = entry->bit_count + pkt_size_bits;
+                // bpf_printk("xdp-rate-limit-v5: entry->bit_count: %u\n", entry->bit_count);
+                if (entry->bit_count > RATE_LIMIT_BPS) {
+                    entry->packet_count--;
+                    entry->bit_count = entry->bit_count - pkt_size_bits;
+                    return XDP_DROP; // Drop packet if rate exceeds threshold
+                }
             }
+            
         } else {
             // New time window, reset counter
             entry->last_update = current_time;
