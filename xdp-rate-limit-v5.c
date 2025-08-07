@@ -65,6 +65,8 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
             entry->bit_count = entry->bit_count + pkt_size_bits;
             // bpf_printk("xdp-rate-limit-v5: entry->bit_count: %u\n", entry->bit_count);
             if (entry->bit_count > RATE_LIMIT_BPS) {
+                entry->packet_count--;
+                entry->bit_count = entry->bit_count - pkt_size_bits;
                 return XDP_DROP; // Drop packet if rate exceeds threshold
             }
         } else {
