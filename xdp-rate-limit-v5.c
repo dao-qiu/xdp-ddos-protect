@@ -6,9 +6,9 @@
 #define RATE_LIMIT_PKTPS 250 // Max packets per second
 #define TIME_WINDOW_NS 1000000000 // 1 second in nanoseconds
 #define RATE_LIMIT_BPS 10000000  // Number bits per second (10 Mbps)
-#define TIME_ARRAY_SIZE 10 // Number of Time Array Entries
-#define BURST_TIME_WINDOW_NS 250000000 // 0.25 second in nanoseconds
-#define BURST_LIMIT_BITS 20000 // Number bits for burst limit
+#define TIME_ARRAY_SIZE 10u // Number of Time Array Entries
+#define BURST_TIME_WINDOW_NS 250000000u // 0.25 second in nanoseconds
+#define BURST_LIMIT_BITS 121000u // Number bits for burst limit
 
 struct rate_limit_entry {
     __u64 last_update; // Timestamp of the last update
@@ -24,19 +24,29 @@ struct bpf_map_def SEC("maps") rate_limit_map = {
     .max_entries = 1024,
 };
 
+struct bpf_map_def SEC("maps") time_buffer = {
+    .type = BPF_MAP_TYPE_ARRAY,
+    .key_size = sizeof(__u32),
+    .value_size = sizeof(__u64),
+    .max_entries = TIME_ARRAY_SIZE,
+};
+
+struct bpf_map_def SEC("maps") size_buffer = {
+    .type = BPF_MAP_TYPE_ARRAY,
+    .key_size = sizeof(__u32),
+    .value_size = sizeof(__u64),
+    .max_entries = TIME_ARRAY_SIZE,
+};
+
 // Circular buffer to keep track of current times
-__u64 time_buffer[TIME_ARRAY_SIZE];
 int time_front = 0;
 int time_count = 0;
 
-// Circular buffer to keep track of packet sizes
-__u64 size_buffer[TIME_ARRAY_SIZE];
-int size_front = 0;
-int size_count = 0;
-
 // Function to add an element to the time buffer
 void add_time(__u64 value) {
-    time_buffer[(time_front + time_count) % TIME_ARRAY_SIZE] = value;
+     __u32 key = (time_front + time_count) % TIME_ARRAY_SIZE;
+     bpf_map_update_elem(&time_buffer, &key, &value, BPF_ANY);
+
     if (time_count < TIME_ARRAY_SIZE) {
         time_count++;
     } else {
@@ -46,36 +56,45 @@ void add_time(__u64 value) {
 
 // Function to add an element to the size buffer
 void add_size(__u64 value) {
-    size_buffer[(size_front + size_count) % TIME_ARRAY_SIZE] = value;
-    if (size_count < TIME_ARRAY_SIZE) {
-        size_count++;
-    } else {
-        size_front = (size_front + 1) % TIME_ARRAY_SIZE;
-    }
+    __u32 key = (time_front + time_count) % TIME_ARRAY_SIZE;
+    bpf_map_update_elem(&size_buffer, &key, &value, BPF_ANY);
 }
 
 // Function to slide the window
 int slide_window(__u64 new_time, __u64 new_size) {
+    int ret = 0;
     add_time(new_time);
     add_size(new_size);
 
     // Check if the time difference between the oldest entry and the 10th entry is less than 0.25 seconds
     if (time_count >= TIME_ARRAY_SIZE) {
-        __u64 time_diff = time_buffer[(time_front + TIME_ARRAY_SIZE - 1) % TIME_ARRAY_SIZE] - time_buffer[time_front];
+        __u32 key = (time_front + TIME_ARRAY_SIZE - 1) % TIME_ARRAY_SIZE;
+        __u64 *latest_time = bpf_map_lookup_elem(&time_buffer, &key);
+        key = time_front;
+        __u64 *oldest_time = bpf_map_lookup_elem(&time_buffer, &key);
+        __u64 time_diff = BURST_TIME_WINDOW_NS;
+        if(oldest_time && latest_time){
+            time_diff = (__u64)(*latest_time - *oldest_time);
+        }
+
+        __u64 total_size = 0;
+        for (int i = 0; i < TIME_ARRAY_SIZE; i++) {
+            key = (time_front + i) % TIME_ARRAY_SIZE;
+            __u64 *size = bpf_map_lookup_elem(&size_buffer, &key);
+            if(size){
+                total_size = (__u64)(total_size + *size);
+            }
+        }
+
         if (time_diff < BURST_TIME_WINDOW_NS) {
             // Check if the accumulated packet size associated with the compared entries is greater than 20000 bits
-            __u64 total_size = 0;
-            for (int i = 0; i < TIME_ARRAY_SIZE; i++) {
-                total_size += size_buffer[(size_front + i) % TIME_ARRAY_SIZE];
-            }
             if (total_size > BURST_LIMIT_BITS) {
                 // Don't enforce XDP_DROP or increment the packet_count or bit_count
-                return 1;
+                ret = 1;
             }
         }
     }
-
-    return 0;
+    return ret;
 }
 
 SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
@@ -122,6 +141,7 @@ SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
         // bpf_printk("xdp-rate-limit-v5: time window: %u\n", current_time - entry->last_update);
         if (current_time - entry->last_update < TIME_WINDOW_NS) {
             burst_met = slide_window(current_time, pkt_size_bits);
+            bpf_printk("xdp-rate-limit-v5: burst_met: %d\n", burst_met);
 
             if(burst_met == 0){
                 entry->packet_count++;
