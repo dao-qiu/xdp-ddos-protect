@@ -122,6 +122,6 @@ Traffic on the loopback interface is not "real" network traffic, it is handled e
 The performance benefits of XDP may be less pronounced for loopback traffic compared to physical interfaces. This means the performance is greater on regular network interfaces like `eth0`, which represent a physical hardware device. 
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for details.
-Original project is attributed to Simone Rodigari.
+This project is licensed under the MIT License. See the LICENSE file for details.  
+Original project is attributed to Simone Rodigari.  
 Further modifications made in this project are done by Daolin Qiu, copyright rights go to Texas Instruments.
