@@ -123,3 +123,5 @@ The performance benefits of XDP may be less pronounced for loopback traffic comp
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.
+Original project is attributed to Simone Rodigari.
+Further modifications made in this project are done by Daolin Qiu, copyright rights go to Texas Instruments.
