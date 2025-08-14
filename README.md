@@ -205,8 +205,28 @@ The main metric to evaluating performance improvement is to see if the load on t
 When the eBPF program is loaded, you should see a significant reduction in percent CPU load on all A53 cores when `iperf3` is running and packets are being dropped.  
 
 ### Steps used to collect data
+To collect the performance data, two scripts are used: 1. `cpu-load-mpstat.sh` and 2. `start-capture-ebpf.sh`.  
+  
+`cpu-load-mpstat.sh` is meant to extract CPU load per core and store into a separate text file for each core. Since AM6442 has two A53 cores, the script extracts CPU load for just the two A53 cores.  
+  
+`start-capture-ebpf.sh` is meant to setup the `iperf3` server and run `cpu-load-mpstat.sh` for about 80 seconds. The output of `iperf3` server is also saved into a text file.  
+  
+Additionally, the device used to send packets to the TI EVM was the same desktop PC used for compiling the eBPF program. Wireshark was used on the desktop PC to monitor traffic from the `iperf3` client side.  
+  
+The full sequence of events to capture data is outlined below.  
+1. Start Wireshark capture on the desktop PC
+2. Start `start-capture-ebpf.sh` on the TI EVM
+3. Start `iperf3` client on the desktop PC
+4. Load the eBPF program after 15 seconds since the start of running `start-capture-ebpf.sh`
+5. Unload the eBPF program after 70 seconds since the start of running `start-capture-ebpf.sh`
+6. After `start-capture-ebpf.sh` stops running, stop Wireshark
+7. Check and rename the output files from `start-capture-ebpf.sh` on the TI EVM and save those files
+8. Check the I/O graph in Wireshark (Statistics--> I/O Graphs) and enable the Y axis to be Bits/1sec instead of packets/1sec
+9. Ensure TCP errors are also seen/checked in the I/O graph and save as .csv file
+10. Save the entire Wireshark capture as a pcap file  
 
-
+The save files can then be used to plot graphs.  
+  
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.  
 Original project is attributed to Simone Rodigari.  
