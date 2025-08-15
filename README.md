@@ -146,7 +146,7 @@ To compile the program, please run `clang -O2 -g -target bpf -c xdp-rate-limit-v
 ### Preparing the TI Processor
 For the OSS-E conference, the TMDS64EVM evaluation board featuring the AM6442 arm-based TI processor is used as the embedded platform through which rate-limiting techniques is evaluated. The TMDS64EVM will need an at least 16GB microSD card flashed with the default RT-Linux wic image which can be found at https://www.ti.com/tool/download/PROCESSOR-SDK-LINUX-RT-AM64X. For OSS-E, version 11.01.05.03 is used.  
   
-In addition, the kernel configuration flashed on the SD card has to be modified to include the following kernel configs.
+In addition, the kernel configuration flashed on the SD card has to be modified to include the following kernel configs.  
 `CONFIG_BPF`  
 `CONFIG_BPF_SYSCALL`  
 `CONFIG_BPF_JIT`  
