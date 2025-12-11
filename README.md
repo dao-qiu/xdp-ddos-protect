@@ -193,6 +193,7 @@ root@am64xx-evm:~/ingress-rate-limit/ebpf-method# ip link show dev eth0
     link/ether 34:08:e1:80:a7:ad brd ff:ff:ff:ff:ff:ff
     prog/xdp id 8 name  tag d0683137a0900a7c jited
 ```
+If `bpf_printk` statements are added for debugging purposes, ensure that `CONFIG_BPF_SYSCALL` kernel configuration is enabled among the list of kernel configs mentioned previously. To read the `bpf_printk` statements during runtime, run `cat /sys/kernel/debug/tracing/trace_pipe`.
 
 ### Evaluating network throughput performance
 To first test if the rate is being limiting, the `iperf3` utility using TCP packets are used to similate a large network bandwidth. Using TCP packets with `iperf3` means that `iperf3` will automatically send as close to the link speed/line rate as possible. On TMDS64EVM, a link speed/line rate of 1Gbps is used.  
