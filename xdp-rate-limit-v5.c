@@ -22,6 +22,8 @@ struct bpf_map_def SEC("maps") rate_limit_map = {
 };
 
 SEC("xdp") int xdp_rate_limit(struct xdp_md *ctx) {
+    bpf_printk("bpf start!");
+
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data; // Parse Ethernet header
     struct ethhdr *eth = data;
